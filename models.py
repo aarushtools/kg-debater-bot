@@ -3,6 +3,12 @@ from tortoise.exceptions import ValidationError, DoesNotExist
 from tortoise import Tortoise, Model, fields, models
 from tortoise.expressions import Q
 from tortoise.manager import Manager
+import secret
+
+
+async def start_db(event: hikari.StartingEvent) -> None:
+    if not Tortoise.is_inited():
+        await Tortoise.init(config=secret.TORTOISE_ORM, _enable_global_fallback=True)
 
 class TierManager(Manager):
     async def get_default_tier(self) -> "Tier":
@@ -18,8 +24,7 @@ class Tier(Model):
         # Check if this tier is overlapping the elo of any other tiers
         tier_overlaps = await Tier.filter(
             (Q(elo_min__range=[self.elo_min, self.elo_max]) | Q(elo_max__range=[self.elo_min, self.elo_max]))
-            & Q(id__ne=self.id)
-        )
+        ).exclude(id=self.id)
 
         if tier_overlaps:
             raise ValidationError("This tier overlaps with " + ", ".join([t.name for t in tier_overlaps]))
@@ -35,6 +40,9 @@ class Tier(Model):
 
     objects = TierManager()
 
+    def __str__(self):
+        return f"{self.name} ({self.elo_min} - {self.elo_max})"
+
 class User(Model):
     discord_id = fields.CharField(primary_key=True, max_length=50)
     discord_name = fields.CharField(max_length=255)  # TODO: Refreshes every 24 hours
@@ -48,18 +56,37 @@ class User(Model):
 
     async def get_match_score(self) -> tuple[int, int]:
         """Returns the match score for this user in the format [wins, losses]"""
-        wins = await self.matches_won.count()
-        losses = await self.matches_lost.count()
+        wins = await self.matches_won.all().count()
+        losses = await self.matches_lost.all().count()
 
         return wins, losses
 
     async def is_admin(self) -> bool:
         pass
 
+    def __str__(self):
+        return self.discord_name
+
+class IncompleteMatch(Model):
+    asker = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="incomplete_matches_asked", unique=True)
+    opposer = fields.ForeignKeyField("botdb.User", on_delete=fields.SET_NULL, related_name="incomplete_matches_opposed", unique=True, null=True)
+    judge = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="incomplete_matches_judged", unique=True, null=True)
+    topic = fields.CharField(max_length=255)
+    ongoing = fields.BooleanField(default=True)
+    started = fields.BooleanField(default=False)
+
+    def __str__(self):
+        """Before calling string on this model, make sure you prefetch_related asker, opposer, and judge"""
+        if self.ongoing: emoji = f"{secret.ONGOING_DEBATE_EMOJI} Ongoing debate"
+        else: emoji = f"{secret.COMPLETED_DEBATE_EMOJI} Completed debate"
+
+        return f"{emoji} on '{self.topic}.' Asker: {self.asker}, Opposer: {self.opposer if self.opposer else 'TBA'}, Judge: {self.judge}"
+
 class Match(Model):
-    winner = fields.ForeignKeyField("botdb.User", on_delete=fields.CASCADE, related_name="matches_won", unique=True)
-    loser = fields.ForeignKeyField("botdb.User", on_delete=fields.CASCADE, related_name="matches_lost", unique=True)
-    judge = fields.ForeignKeyField("botdb.User", on_delete=fields.CASCADE, related_name="matches_judged", unique=True)
+    winner = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_won", unique=True)
+    loser = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_lost", unique=True)
+    judge = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_judged", unique=True)
+    topic = fields.CharField(max_length=255)
     nulled = fields.BooleanField(default=False)
 
     async def get_winner_elo_change(self) -> int:

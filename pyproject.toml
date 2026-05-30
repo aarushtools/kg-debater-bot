@@ -5,6 +5,7 @@ description = "A discord bot for the Knowledge Gap discord server"
 readme = "README.md"
 requires-python = ">=3.13.6"
 dependencies = [
+    "aiocache>=0.12.3",
     "easy-pil>=0.6.1",
     "fastapi>=0.136.3",
     "fastapi-discord>=0.1.6",
@@ -12,7 +13,7 @@ dependencies = [
     "hikari-miru>=4.2.0",
     "hikari[speedups]>=2.5.0",
     "jinja2>=3.1.6",
-    "tortoise-orm[asyncpg]>=1.1.7",
+    "tortoise-orm[asyncpg,ptpython]>=1.1.7",
 ]
 
 [tool.tortoise]

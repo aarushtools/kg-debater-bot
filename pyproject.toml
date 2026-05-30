@@ -1,0 +1,12 @@
+[project]
+name = "kg-debater-bot"
+version = "0.1.0"
+description = "A discord bot for the Knowledge Gap discord server"
+readme = "README.md"
+requires-python = ">=3.13.6"
+dependencies = [
+    "easy-pil>=0.6.1",
+    "hikari>=2.5.0",
+    "hikari-lightbulb>=3.2.4",
+    "hikari-miru>=4.2.0",
+]

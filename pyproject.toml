@@ -6,7 +6,14 @@ readme = "README.md"
 requires-python = ">=3.13.6"
 dependencies = [
     "easy-pil>=0.6.1",
-    "hikari>=2.5.0",
+    "fastapi>=0.136.3",
+    "fastapi-discord>=0.1.6",
     "hikari-lightbulb>=3.2.4",
     "hikari-miru>=4.2.0",
+    "hikari[speedups]>=2.5.0",
+    "jinja2>=3.1.6",
+    "tortoise-orm[asyncpg]>=1.1.7",
 ]
+
+[tool.tortoise]
+tortoise_orm = "secret.TORTOISE_ORM"

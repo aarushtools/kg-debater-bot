@@ -74,6 +74,8 @@ class IncompleteMatch(Model):
     topic = fields.CharField(max_length=255)
     ongoing = fields.BooleanField(default=True)
     started = fields.BooleanField(default=False)
+    started_at = fields.DatetimeField(null=True)
+    ended_at = fields.DatetimeField(null=True)
 
     def __str__(self):
         """Before calling string on this model, make sure you prefetch_related asker, opposer, and judge"""

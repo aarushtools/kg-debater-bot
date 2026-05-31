@@ -1,10 +1,10 @@
-import asyncio
+import time
+from datetime import datetime, timezone
 
 import hikari
 import lightbulb
 import miru
 from aiocache import Cache
-from tortoise import Tortoise
 from tortoise.exceptions import DoesNotExist
 from tortoise.expressions import Q
 
@@ -108,48 +108,71 @@ class StartDebate(lightbulb.SlashCommand, name="start", description="Start a deb
         incomplete_match_obj = await IncompleteMatch.create(asker=model_asker, opposer=model_opposer, judge=model_judge, topic=self.topic)
 
         # Ask the opposing user to confirm
-        view = LimitedAcceptDenyView(asker=ctx.member, opposer=self.opposing_user)
-        embed = hikari.Embed(title="Debate Request", color=0xFF0000)
-        embed.add_field(name="Asker", value=ctx.member.mention)
-        embed.add_field(name="Opposer", value=self.opposing_user.mention)
-        embed.add_field(name="Judge", value=self.judge.mention)
+        for user_str, request_user in [("opponent", self.opposing_user), ("judge", self.judge)]:
+            request_text = ("Debate Request", "Debate request") if user_str == "opponent" else ("Judge Request", "Judge request")
+
+            view = LimitedAcceptDenyView(asker=ctx.member, user_requested=request_user, user_request_str=user_str)
+            embed = hikari.Embed(title=request_text[0], color=0xFF0000)
+            embed.add_field(name="Asker", value=ctx.member.mention)
+            embed.add_field(name="Opposer", value=request_user.mention)
+            embed.add_field(name="Judge", value=self.judge.mention)
+            embed.add_field(name="Topic", value=self.topic)
+
+            response_id = await ctx.respond(content=f"{request_text[1]} for: {request_user.mention}", embed=embed, components=view)
+            miru_client.start_view(view)
+
+            await view.wait()
+
+            if view.answer is None:
+                await ctx.edit_response(response_id=response_id,
+                                        content=f"{request_user.mention} did not respond for a {user_str} request within 120 seconds.")
+                incomplete_match_obj.ongoing = False
+                await incomplete_match_obj.save()
+                return
+            elif view.answer is False:
+                await ctx.edit_response(response_id=response_id,
+                                        content=f"{request_user.mention} denied this {user_str} request.")
+                incomplete_match_obj.ongoing = False
+                await incomplete_match_obj.save()
+                return
+            elif view.answer == "cancel":
+                await ctx.edit_response(response_id=response_id,
+                                        content=f"{ctx.member.mention} canceled this {user_str} request.")
+                incomplete_match_obj.ongoing = False
+                await incomplete_match_obj.save()
+                return
+            elif view.answer is True:
+                await ctx.edit_response(response_id=response_id,
+                                        content=f"{request_user.mention} accepted this {user_str} request.")
+
+        # Here, opposer and judge has accepted
+        incomplete_match_obj.ongoing = True
+        incomplete_match_obj.started = True
+
+        incomplete_match_obj.started_at = datetime.now(timezone.utc)
+        await incomplete_match_obj.save()
+
+
+        embed = hikari.Embed(title="Match Started", color=0xFF0000)
+        # embed.set_image()
         embed.add_field(name="Topic", value=self.topic)
+        embed.add_field(name="Start Time", value=f"<t:{int(incomplete_match_obj.started_at.timestamp())}:F>")
 
-        response_id = await ctx.respond(content=f"Debate request for: {self.opposing_user.mention}", embed=embed, components=view)
-        miru_client.start_view(view)
+        await ctx.respond(embed=embed)
 
-        await view.wait()
-
-        if view.answer is None:
-            await ctx.edit_response(response_id=response_id,
-                                    content=f"{self.opposing_user.mention} did not respond within 120 seconds.")
-            incomplete_match_obj.ongoing = False
-            await incomplete_match_obj.save()
-        elif view.answer is False:
-            await ctx.edit_response(response_id=response_id,
-                                    content=f"{self.opposing_user.mention} denied this request.")
-            incomplete_match_obj.ongoing = False
-            await incomplete_match_obj.save()
-        elif view.answer == "cancel":
-            await ctx.edit_response(response_id=response_id,
-                                    content=f"{ctx.member.mention} canceled this request.")
-            incomplete_match_obj.ongoing = False
-            await incomplete_match_obj.save()
-        elif view.answer is True:
-            await ctx.edit_response(response_id=response_id,
-                                    content=f"{self.opposing_user.mention} accepted this request.")
 
 class LimitedAcceptDenyView(miru.View):
-    def __init__(self, asker: hikari.User, opposer: hikari.User, *args, **kwargs):
+    def __init__(self, asker: hikari.User, user_requested: hikari.User, user_request_str: str, *args, **kwargs):
         self.asker = asker
-        self.opposer = opposer
+        self.user_requested = user_requested
+        self.user_request_str = user_request_str
         self.answer = None
         super().__init__(timeout=120, *args, **kwargs)
 
     @miru.button(label="Accept", style=hikari.ButtonStyle.SUCCESS)
     async def accept(self, ctx: miru.ViewContext, button: miru.Button) -> None:
-        if ctx.user.id != self.opposer.id:
-            await ctx.respond("Only the requested opponent can accept!", flags=hikari.MessageFlag.EPHEMERAL)
+        if ctx.user.id != self.user_requested.id:
+            await ctx.respond(f"Only the requested {self.user_request_str} can accept!", flags=hikari.MessageFlag.EPHEMERAL)
             return
 
         self.answer = True
@@ -157,8 +180,8 @@ class LimitedAcceptDenyView(miru.View):
 
     @miru.button(label="Deny", style=hikari.ButtonStyle.DANGER)
     async def deny(self, ctx: miru.ViewContext, button: miru.Button) -> None:
-        if ctx.user.id != self.opposer.id:
-            await ctx.respond("Only the requested opponent can deny!", flags=hikari.MessageFlag.EPHEMERAL)
+        if ctx.user.id != self.user_requested.id:
+            await ctx.respond("fOnly the requested {self.user_request_str} can deny!", flags=hikari.MessageFlag.EPHEMERAL)
             return
 
         self.answer = False

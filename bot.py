@@ -5,7 +5,7 @@ import hikari
 import lightbulb
 import miru
 from aiocache import Cache
-from tortoise.exceptions import DoesNotExist
+from tortoise.exceptions import DoesNotExist, MultipleObjectsReturned
 from tortoise.expressions import Q
 
 import secret
@@ -108,8 +108,8 @@ class StartDebate(lightbulb.SlashCommand, name="start", description="Start a deb
         incomplete_match_obj = await IncompleteMatch.create(asker=model_asker, opposer=model_opposer, judge=model_judge, topic=self.topic)
 
         # Ask the opposing user to confirm
-        for user_str, request_user in [("opponent", self.opposing_user), ("judge", self.judge)]:
-            request_text = ("Debate Request", "Debate request") if user_str == "opponent" else ("Judge Request", "Judge request")
+        for user_str, request_user in [("opposer", self.opposing_user), ("judge", self.judge)]:
+            request_text = ("Debate Request", "Debate request") if user_str == "opposer" else ("Judge Request", "Judge request")
 
             view = LimitedAcceptDenyView(asker=ctx.member, user_requested=request_user, user_request_str=user_str)
             embed = hikari.Embed(title=request_text[0], color=0xFF0000)
@@ -154,12 +154,59 @@ class StartDebate(lightbulb.SlashCommand, name="start", description="Start a deb
 
 
         embed = hikari.Embed(title="Match Started", color=0xFF0000)
-        # embed.set_image()
+        embed.set_image()  # TODO
         embed.add_field(name="Topic", value=self.topic)
         embed.add_field(name="Start Time", value=f"<t:{int(incomplete_match_obj.started_at.timestamp())}:F>")
 
         await ctx.respond(embed=embed)
 
+@debate.register
+class CancelDebate(lightbulb.SlashCommand, name="cancel", description="Request to cancel an ongoing debate you are participating in"):
+    @lightbulb.invoke
+    async def invoke(self, ctx: lightbulb.Context) -> None:
+        model_user = User.get(discord_id=ctx.member.id)
+        try:
+            incomplete_match_obj = await IncompleteMatch.get(Q(ongoing=True) & Q(started=True) & (Q(asker=model_user) | Q(opposer=model_user)))
+        except MultipleObjectsReturned:
+            await ctx.respond("You are currently in multiple incomplete matches. If you think this is a bug, ask an admin to cancel them for you.", ephemeral=True)
+            return
+        except DoesNotExist:
+            await ctx.respond("You are not in any ongoing matches currently", ephemeral=True)
+            return
+
+        model_request_user = incomplete_match_obj.opposer
+        request_user = bot.cache.get_member(ctx.guild_id, model_request_user.discord_id) or await bot.rest.fetch_member(ctx.guild_id, model_request_user.discord_id)
+
+        view = LimitedAcceptDenyView(asker=ctx.member, user_requested=request_user, user_request_str="opposer")
+        embed = hikari.Embed(title="Cancel Match", description=f"{ctx.member.mention} requested to cancel a debate with {request_user.mention}",color=0xFF0000)
+
+        response_id = await ctx.respond(content=f"{ctx.member.mention} wants to cancel an ongoing debate. Request for: {request_user.mention}", embed=embed,
+                                        components=view)
+        miru_client.start_view(view)
+
+        await view.wait()
+
+        if view.answer is None:
+            await ctx.edit_response(response_id=response_id,
+                                    content=f"{request_user.mention} did not respond for a cancel debate request within 120 seconds.")
+            return
+        elif view.answer is False:
+            await ctx.edit_response(response_id=response_id,
+                                    content=f"{request_user.mention} denied this cancal debate request.")
+            return
+        elif view.answer == "cancel":
+            await ctx.edit_response(response_id=response_id,
+                                    content=f"{ctx.member.mention} canceled this cancel debate request.")
+            return
+        elif view.answer is True:
+            await ctx.edit_response(response_id=response_id,
+                                    content=f"{request_user.mention} accepted this cancel debate request.")
+            incomplete_match_obj.ongoing = False
+            await incomplete_match_obj.save()
+            await Match.create(winner=model_user, loser=model_request_user, judge=incomplete_match_obj.judge, topic=incomplete_match_obj.topic, nulled=True, draw=True)
+            return
+
+        await ctx.respond("Debate canceled.")
 
 class LimitedAcceptDenyView(miru.View):
     def __init__(self, asker: hikari.User, user_requested: hikari.User, user_request_str: str, *args, **kwargs):
@@ -181,7 +228,7 @@ class LimitedAcceptDenyView(miru.View):
     @miru.button(label="Deny", style=hikari.ButtonStyle.DANGER)
     async def deny(self, ctx: miru.ViewContext, button: miru.Button) -> None:
         if ctx.user.id != self.user_requested.id:
-            await ctx.respond("fOnly the requested {self.user_request_str} can deny!", flags=hikari.MessageFlag.EPHEMERAL)
+            await ctx.respond(f"Only the requested {self.user_request_str} can deny!", flags=hikari.MessageFlag.EPHEMERAL)
             return
 
         self.answer = False

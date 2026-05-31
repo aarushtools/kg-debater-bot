@@ -90,6 +90,7 @@ class Match(Model):
     judge = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_judged", unique=True)
     topic = fields.CharField(max_length=255)
     nulled = fields.BooleanField(default=False)
+    draw = fields.BooleanField(default=False)
 
     async def get_winner_elo_change(self) -> int:
         pass

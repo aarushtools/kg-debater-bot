@@ -3,6 +3,7 @@ from tortoise.exceptions import ValidationError, DoesNotExist
 from tortoise import Tortoise, Model, fields, models
 from tortoise.expressions import Q
 from tortoise.manager import Manager
+from tortoise.transactions import in_transaction
 import secret
 
 
@@ -19,6 +20,9 @@ class Tier(Model):
     elo_min = fields.IntField()
     elo_max = fields.IntField()
     role_id = fields.CharField(max_length=255)
+    color = fields.CharField(max_length=7)
+    k_factor = fields.IntField()
+    icon = fields.BinaryField(null=True)
 
     async def save(self, *args, **kwargs) -> None:
         # Check if this tier is overlapping the elo of any other tiers
@@ -68,9 +72,9 @@ class User(Model):
         return self.discord_name
 
 class IncompleteMatch(Model):
-    asker = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="incomplete_matches_asked", unique=True)
-    opposer = fields.ForeignKeyField("botdb.User", on_delete=fields.SET_NULL, related_name="incomplete_matches_opposed", unique=True, null=True)
-    judge = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="incomplete_matches_judged", unique=True, null=True)
+    asker = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="incomplete_matches_asked")
+    opposer = fields.ForeignKeyField("botdb.User", on_delete=fields.SET_NULL, related_name="incomplete_matches_opposed", null=True)
+    judge = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="incomplete_matches_judged", null=True)
     topic = fields.CharField(max_length=255)
     ongoing = fields.BooleanField(default=True)
     started = fields.BooleanField(default=False)
@@ -85,27 +89,80 @@ class IncompleteMatch(Model):
         return f"{emoji} on '{self.topic}.' Asker: {self.asker}, Opposer: {self.opposer if self.opposer else 'TBA'}, Judge: {self.judge}"
 
 class Match(Model):
-    winner = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_won", unique=True)
-    loser = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_lost", unique=True)
-    judge = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_judged", unique=True)
+    winner = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_won")
+    loser = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_lost")
+    judge = fields.ForeignKeyField("botdb.User", on_delete=fields.RESTRICT, related_name="matches_judged")
     topic = fields.CharField(max_length=255)
     nulled = fields.BooleanField(default=False)
     draw = fields.BooleanField(default=False)
+    stance_description = fields.TextField(default="")
+    additional_notes = fields.TextField(default="")
+    incomplete_match = fields.ForeignKeyField("botdb.IncompleteMatch", on_delete=fields.RESTRICT, related_name="finished_match", unique=True)
+    completed_at = fields.DatetimeField(auto_now_add=True)
+
+    async def get_expected_player_winner_prob(self) -> float:
+        winner = await self.winner
+        loser = await self.loser
+        Q_A = 10**(winner.elo / 400)
+        Q_B = 10**(loser.elo / 400)
+        return Q_A / (Q_A + Q_B)
 
     async def get_winner_elo_change(self) -> int:
-        pass
+        winner = await self.winner
+        winner_rank = await winner.calculate_dynamic_tier_object()
+        winner_prob = await self.get_expected_player_winner_prob()
+
+        return int(winner_rank.k_factor*(1 - winner_prob))
 
     async def get_loser_elo_change(self) -> int:
-        pass
+        loser = await self.loser
+        loser_rank = await loser.calculate_dynamic_tier_object()
+        loser_prob = 1 - await self.get_expected_player_winner_prob()
 
-    async def annul(self):
-        self.nulled = True
+        return int(loser_rank.k_factor*(0 - loser_prob))
+
+    async def apply_elo_changes(self) -> tuple[int, int]:
         winner_user = await self.winner
         loser_user = await self.loser
+        winner_elo_change = await self.get_winner_elo_change()
+        loser_elo_change = await self.get_loser_elo_change()
 
-        winner_user -= await self.get_winner_elo_change()
-        loser_user += await self.get_loser_elo_change()
+        winner_user.elo = max(0, winner_user.elo + winner_elo_change)
+        loser_user.elo = max(0, loser_user.elo + loser_elo_change)
+        winner_user.tier = await winner_user.calculate_dynamic_tier_object()
+        loser_user.tier = await loser_user.calculate_dynamic_tier_object()
 
-        await self.winner.save()
-        await self.loser.save()
-        await self.save()
+        await winner_user.save()
+        await loser_user.save()
+        return winner_elo_change, loser_elo_change
+
+    async def annul(self):
+        async with in_transaction():
+            self.nulled = True
+            winner_user = await self.winner
+            loser_user = await self.loser
+            winner_elo_change = await self.get_winner_elo_change()
+            loser_elo_change = await self.get_loser_elo_change()
+
+            winner_user.elo = max(0, winner_user.elo - winner_elo_change)
+            loser_user.elo = max(0, loser_user.elo - loser_elo_change)
+            winner_user.tier = await winner_user.calculate_dynamic_tier_object()
+            loser_user.tier = await loser_user.calculate_dynamic_tier_object()
+
+            await winner_user.save()
+            await loser_user.save()
+            await self.save()
+
+    def __str__(self):
+        """Before calling string on this model, make sure you prefetch_related winner, loser, and judge"""
+        emoji = f"{secret.COMPLETED_DEBATE_EMOJI} Completed debate"
+
+        return f"{emoji} on '{self.topic}.' Winner: {self.winner}, Loser: {self.loser}, Judge: {self.judge}"
+
+class AdminAction(Model):
+    title = fields.CharField(max_length=255)
+    description = fields.TextField()
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title

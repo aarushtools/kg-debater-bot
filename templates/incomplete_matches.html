@@ -1,0 +1,55 @@
+{% extends "admin_base.html" %}
+{% block title %}Open Matches - KG Admin{% endblock %}
+{% block content %}
+<div class="mb-6">
+    <div>
+        <h2 class="text-2xl font-semibold tracking-tight">Open matches</h2>
+        <p class="mt-2 text-sm text-zinc-400">Sorted by active state and start time.</p>
+    </div>
+</div>
+
+<section class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+    <table class="min-w-full divide-y divide-zinc-800 text-sm">
+        <thead class="bg-zinc-950/60 text-left text-xs uppercase tracking-wide text-zinc-500">
+            <tr>
+                <th class="px-4 py-3">Topic</th>
+                <th class="px-4 py-3">People</th>
+                <th class="px-4 py-3">State</th>
+                <th class="px-4 py-3">Timing</th>
+                <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+            {% for match in matches %}
+                <tr class="hover:bg-zinc-800/40">
+                    <td class="max-w-md px-4 py-3 font-medium text-zinc-100">{{ match.topic }}</td>
+                    <td class="px-4 py-3 text-zinc-300">
+                        <div>Asker: {{ match.asker.discord_name }}</div>
+                        <div>Opposer: {{ match.opposer.discord_name if match.opposer else 'TBA' }}</div>
+                        <div>Judge: {{ match.judge.discord_name if match.judge else 'TBA' }}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="flex flex-col gap-1">
+                            <span class="w-fit rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-300">{{ 'Ongoing' if match.ongoing else 'Closed' }}</span>
+                            <span class="w-fit rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-300">{{ 'Started' if match.started else 'Not started' }}</span>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-zinc-400">
+                        <div>Start: {{ match.started_at or 'N/A' }}</div>
+                        <div>End: {{ match.ended_at or 'N/A' }}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="flex justify-end gap-2">
+                            <a class="rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800" href="/admin/incomplete-matches/{{ match.id }}/edit">Edit</a>
+                            <form method="post" action="/admin/incomplete-matches/{{ match.id }}/delete">
+                                <button class="rounded-md border border-red-500/40 px-3 py-1.5 text-red-200 hover:bg-red-500/10" type="submit">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% include "pagination.html" %}
+{% endblock %}

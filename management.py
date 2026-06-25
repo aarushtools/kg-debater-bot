@@ -1,5 +1,10 @@
+from pathlib import Path
+
+import aiohttp
 import hikari
-import sys;
+import sys
+
+from tortoise import Tortoise
 
 from helpers import get_match_score_nickname
 
@@ -7,7 +12,7 @@ args = sys.argv[1:]
 import secret
 from models import User, Tier, start_db
 
-bot = hikari.GatewayBot(token=secret.TOKEN, intents=hikari.Intents.ALL)
+bot = hikari.GatewayBot(token=secret.TOKEN, intents=hikari.Intents.ALL,)
 
 async def init_users_table(_: hikari.StartedEvent):
     await bot.request_guild_members(int(secret.GUILD_ID))
@@ -37,12 +42,26 @@ async def on_member_chunk(event: hikari.MemberChunkEvent) -> None:
         if created: created_count += 1
         else: already_existed += 1
 
+        if not Path("images/test1.bytes").exists():
+            with open("images/test1.bytes", "wb") as f:
+                f.write(await member.display_avatar_url.read())
+        elif not Path("images/test2.bytes").exists():
+            with open("images/test2.bytes", "wb") as f:
+                f.write(await member.display_avatar_url.read())
+
     print(f"Created {created_count} new users. {already_existed} already existed in the database. Total: {created_count + already_existed}")
 
+async def drop_and_reset(event: hikari.StartedEvent):
+    await Tortoise._drop_databases()
+    await Tortoise.init(config=secret.TORTOISE_ORM, _enable_global_fallback=False)
+    await Tortoise.generate_schemas(safe=True)
+    await Tier.create(name="Low Tier", elo_min=0, elo_max=0, role_id="021290824", color="#FF7485", k_factor=10)
 
 if __name__ == "__main__":
     if "init_db" in args:
         bot.subscribe(hikari.StartedEvent, init_users_table)
+    if "drop_and_reset" in args:
+        bot.subscribe(hikari.StartedEvent, drop_and_reset)
 
     bot.subscribe(hikari.StartingEvent, start_db)
     bot.run()

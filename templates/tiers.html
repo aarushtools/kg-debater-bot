@@ -1,0 +1,57 @@
+{% extends "admin_base.html" %}
+{% block title %}Tiers - KG Admin{% endblock %}
+{% block content %}
+<div class="mb-6 flex items-center justify-between gap-4">
+    <div>
+        <h2 class="text-2xl font-semibold tracking-tight">Tiers</h2>
+        <p class="mt-2 text-sm text-zinc-400">Sorted by Elo range.</p>
+    </div>
+    <a href="/admin/tiers/new" class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400">New tier</a>
+</div>
+
+<section class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+    <table class="min-w-full divide-y divide-zinc-800 text-sm">
+        <thead class="bg-zinc-950/60 text-left text-xs uppercase tracking-wide text-zinc-500">
+            <tr>
+                <th class="px-4 py-3">Tier</th>
+                <th class="px-4 py-3">Icon</th>
+                <th class="px-4 py-3">Elo</th>
+                <th class="px-4 py-3">Role</th>
+                <th class="px-4 py-3">K</th>
+                <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+            {% for tier in tiers %}
+                <tr class="hover:bg-zinc-800/40">
+                    <td class="px-4 py-3">
+                        <div class="flex items-center gap-3">
+                            <span class="h-4 w-4 rounded-full border border-white/20" style="background-color: {{ tier.color }}"></span>
+                            <span class="font-medium text-zinc-100">{{ tier.name }}</span>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if tier.icon %}
+                            <img class="h-10 w-10 rounded-md object-cover" src="/admin/tiers/{{ tier.id }}/icon" alt="">
+                        {% else %}
+                            <span class="text-zinc-500">None</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-zinc-300">{{ tier.elo_min }} - {{ tier.elo_max }}</td>
+                    <td class="px-4 py-3 text-zinc-300">{{ tier.role_id }}</td>
+                    <td class="px-4 py-3 text-zinc-300">{{ tier.k_factor }}</td>
+                    <td class="px-4 py-3">
+                        <div class="flex justify-end gap-2">
+                            <a class="rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800" href="/admin/tiers/{{ tier.id }}/edit">Edit</a>
+                            <form method="post" action="/admin/tiers/{{ tier.id }}/delete">
+                                <button class="rounded-md border border-red-500/40 px-3 py-1.5 text-red-200 hover:bg-red-500/10" type="submit">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% include "pagination.html" %}
+{% endblock %}

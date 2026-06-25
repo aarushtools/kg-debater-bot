@@ -1,0 +1,71 @@
+{% extends "admin_base.html" %}
+{% block title %}{% if match %}Edit Match{% else %}New Match{% endif %} - KG Admin{% endblock %}
+{% block content %}
+<div class="mb-6">
+    <a class="text-sm text-indigo-300 hover:text-indigo-200" href="/admin/matches">Back to matches</a>
+    <h2 class="mt-3 text-2xl font-semibold tracking-tight">{% if match %}Edit match{% else %}New match{% endif %}</h2>
+</div>
+
+<form method="post" action="/admin/matches/save" class="max-w-5xl rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+    {% if match %}<input type="hidden" name="id" value="{{ match.id }}">{% endif %}
+    <div class="grid gap-5 md:grid-cols-3">
+        <label class="space-y-2 md:col-span-3">
+            <span class="text-sm font-medium text-zinc-300">Topic</span>
+            <input name="topic" value="{{ match.topic if match else '' }}" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+        </label>
+        <label class="space-y-2">
+            <span class="text-sm font-medium text-zinc-300">Winner</span>
+            <select name="winner_id" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+                {% for option_user in users %}
+                    <option value="{{ option_user.discord_id }}" {% if match and match.winner.discord_id == option_user.discord_id %}selected{% endif %}>{{ option_user.discord_name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="space-y-2">
+            <span class="text-sm font-medium text-zinc-300">Loser</span>
+            <select name="loser_id" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+                {% for option_user in users %}
+                    <option value="{{ option_user.discord_id }}" {% if match and match.loser.discord_id == option_user.discord_id %}selected{% endif %}>{{ option_user.discord_name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="space-y-2">
+            <span class="text-sm font-medium text-zinc-300">Judge</span>
+            <select name="judge_id" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+                {% for option_user in users %}
+                    <option value="{{ option_user.discord_id }}" {% if match and match.judge.discord_id == option_user.discord_id %}selected{% endif %}>{{ option_user.discord_name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="space-y-2 md:col-span-3">
+            <span class="text-sm font-medium text-zinc-300">Source open match</span>
+            <select name="incomplete_match_id" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+                {% for option_match in incomplete_matches %}
+                    <option value="{{ option_match.id }}" {% if match and match.incomplete_match.id == option_match.id %}selected{% endif %}>#{{ option_match.id }} - {{ option_match.topic }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3">
+            <input name="nulled" type="checkbox" {% if match and match.nulled %}checked{% endif %} class="h-4 w-4 rounded border-zinc-600 bg-zinc-950 text-indigo-500">
+            <span class="text-sm text-zinc-300">Nulled</span>
+        </label>
+        <label class="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-3">
+            <input name="draw" type="checkbox" {% if match and match.draw %}checked{% endif %} class="h-4 w-4 rounded border-zinc-600 bg-zinc-950 text-indigo-500">
+            <span class="text-sm text-zinc-300">Draw</span>
+        </label>
+        <div></div>
+        <label class="space-y-2 md:col-span-3">
+            <span class="text-sm font-medium text-zinc-300">Stance description</span>
+            <textarea name="stance_description" rows="4" class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">{{ match.stance_description if match else '' }}</textarea>
+        </label>
+        <label class="space-y-2 md:col-span-3">
+            <span class="text-sm font-medium text-zinc-300">Additional notes</span>
+            <textarea name="additional_notes" rows="4" class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">{{ match.additional_notes if match else '' }}</textarea>
+        </label>
+    </div>
+    <div class="mt-6 flex justify-end gap-3">
+        <a class="rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800" href="/admin/matches">Cancel</a>
+        <button class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400" type="submit">Save match</button>
+    </div>
+</form>
+{% endblock %}

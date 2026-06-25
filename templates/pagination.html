@@ -1,0 +1,15 @@
+{% if pagination and pagination.pages > 1 %}
+    <div class="mt-5 flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">
+        <div>
+            Page {{ pagination.page }} of {{ pagination.pages }} · {{ pagination.total }} total
+        </div>
+        <div class="flex gap-2">
+            {% if pagination.has_prev %}
+                <a class="rounded-md border border-zinc-700 px-3 py-1.5 hover:bg-zinc-800" href="{{ base_path }}?page={{ pagination.prev }}">Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+                <a class="rounded-md border border-zinc-700 px-3 py-1.5 hover:bg-zinc-800" href="{{ base_path }}?page={{ pagination.next }}">Next</a>
+            {% endif %}
+        </div>
+    </div>
+{% endif %}

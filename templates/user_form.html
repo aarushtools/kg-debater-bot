@@ -1,0 +1,38 @@
+{% extends "admin_base.html" %}
+{% block title %}{% if bot_user %}Edit User{% else %}New User{% endif %} - KG Admin{% endblock %}
+{% block content %}
+<div class="mb-6">
+    <a class="text-sm text-indigo-300 hover:text-indigo-200" href="/admin/users">Back to users</a>
+    <h2 class="mt-3 text-2xl font-semibold tracking-tight">{% if bot_user %}Edit user{% else %}New user{% endif %}</h2>
+</div>
+
+<form method="post" action="/admin/users/save" class="max-w-2xl rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+    {% if bot_user %}<input type="hidden" name="original_discord_id" value="{{ bot_user.discord_id }}">{% endif %}
+    <div class="grid gap-5 md:grid-cols-2">
+        <label class="space-y-2">
+            <span class="text-sm font-medium text-zinc-300">Discord ID</span>
+            <input name="discord_id" value="{{ bot_user.discord_id if bot_user else '' }}" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+        </label>
+        <label class="space-y-2">
+            <span class="text-sm font-medium text-zinc-300">Display name</span>
+            <input name="discord_name" value="{{ bot_user.discord_name if bot_user else '' }}" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+        </label>
+        <label class="space-y-2">
+            <span class="text-sm font-medium text-zinc-300">Elo</span>
+            <input name="elo" type="number" value="{{ bot_user.elo if bot_user else 0 }}" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+        </label>
+        <label class="space-y-2">
+            <span class="text-sm font-medium text-zinc-300">Tier</span>
+            <select name="tier_id" required class="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-400 focus:outline-none">
+                {% for tier in tiers %}
+                    <option value="{{ tier.id }}" {% if bot_user and bot_user.tier.id == tier.id %}selected{% endif %}>{{ tier.name }} ({{ tier.elo_min }}-{{ tier.elo_max }})</option>
+                {% endfor %}
+            </select>
+        </label>
+    </div>
+    <div class="mt-6 flex justify-end gap-3">
+        <a class="rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800" href="/admin/users">Cancel</a>
+        <button class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400" type="submit">Save user</button>
+    </div>
+</form>
+{% endblock %}

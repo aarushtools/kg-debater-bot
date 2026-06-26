@@ -15,7 +15,7 @@ from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 import secret
-from helpers import get_match_score_nickname
+from helpers import get_match_score_nickname, sync_tier_roles
 from models import User, Tier, Match, IncompleteMatch, start_db
 
 bot = hikari.GatewayBot(token=secret.TOKEN, intents=hikari.Intents.ALL)
@@ -79,6 +79,9 @@ async def on_member_join(event: hikari.MemberCreateEvent) -> None:
     })
 
     await member.edit(nickname=await get_match_score_nickname(current_name, model_user))
+    role_error = await sync_tier_roles(model_user, member=member)
+    if role_error:
+        logging.error("Tier role sync failed for %s on join: %s", member.id, role_error)
 
 
 @lb_client.register
@@ -525,7 +528,12 @@ class FinishDebate(lightbulb.SlashCommand, name="finish", description="Finish a 
             await opposer_user.edit(nickname=await get_match_score_nickname(opposer_user.global_name or opposer_user.username,
                                                                  model_winner if not asker_won else model_loser))
         except hikari.ForbiddenError:
-            print("Couldn't edit one or more debate participant nicknames")
+            logging.error("Couldn't edit one or more debate participant nicknames")
+
+        for participant, model_user in ((asker_user, model_winner if asker_won else model_loser), (opposer_user, model_winner if not asker_won else model_loser)):
+            role_error = await sync_tier_roles(model_user, member=participant)
+            if role_error:
+                logging.error("Tier role sync failed for %s after match: %s", participant.id, role_error)
 
         embed = hikari.Embed(title=f"{secret.COMPLETED_DEBATE_EMOJI} Match Finished", color=0xFF0000)
         attachment = hikari.Bytes(await asyncio.to_thread(

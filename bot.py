@@ -82,6 +82,15 @@ async def on_member_join(event: hikari.MemberCreateEvent) -> None:
 
 
 @lb_client.register
+class GetUILink(lightbulb.SlashCommand, name="ui", description="Get link to bot UI"):
+    @lightbulb.invoke
+    async def invoke(self, ctx: lightbulb.Context) -> None:
+        if int(secret.ADMIN_ROLE_ID) in ctx.member.role_ids:
+            await ctx.respond(content=secret.UI_URL, ephemeral=True)
+        else:
+            await ctx.respond(content="You don't have permission to run this command", ephemeral=True)
+
+@lb_client.register
 class Stats(lightbulb.SlashCommand, name="stats", description="View debate stats globally"):
     user = lightbulb.user("user", "The user you want to view stats for", default=None)
     from_pos = lightbulb.number("page_number", "The position to start the global leaderboard", default=0)

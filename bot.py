@@ -281,9 +281,9 @@ class StartDebate(lightbulb.SlashCommand, name="start", description="Start a deb
         if self.opposing_user.id == ctx.member.id:
             await ctx.respond("You can't debate yourself!", ephemeral=True)
             return
-        #if self.judge.id in (self.opposing_user.id, ctx.member.id):
-        #    await ctx.respond("One of the debate participants is a judge! Refusing this request.", ephemeral=True)
-        #    return
+        if self.judge.id in (self.opposing_user.id, ctx.member.id):
+            await ctx.respond("One of the debate participants is a judge! Refusing this request.", ephemeral=True)
+            return
 
         if len(self.topic) > 255:
             await ctx.respond("Topic too long (exceeds 255 characters)", ephemeral=True)

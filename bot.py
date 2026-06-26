@@ -105,7 +105,7 @@ class Stats(lightbulb.SlashCommand, name="stats", description="View debate stats
         single_user = self.user or profile_user
 
         if single_user:
-            await send_user_profile(ctx, profile_user)
+            await send_user_profile(ctx, single_user)
             return
 
         view = StatsLeaderboardView(

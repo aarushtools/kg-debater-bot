@@ -24,7 +24,7 @@ miru_client = miru.Client(bot)
 cache = Cache(Cache.MEMORY)
 
 logging.basicConfig(
-    filename="app_errors.log",
+    filename="bot_errors.log",
     level=logging.ERROR,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )

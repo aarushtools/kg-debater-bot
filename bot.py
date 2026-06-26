@@ -259,19 +259,15 @@ class StatsLeaderboardView(DisableView):
     @miru.button(label="◀ Prev", style=hikari.ButtonStyle.SECONDARY)
     async def prev(self, ctx: miru.ViewContext, button: miru.Button):
         await ctx.defer()
-
-        async with self._lock:
-            if self.page > 0:
-                self.page -= 1
-            await self.update(ctx)
+        if self.page > 0:
+            self.page -= 1
+        await self.update(ctx)
 
     @miru.button(label="Next ▶", style=hikari.ButtonStyle.SECONDARY)
     async def next(self, ctx: miru.ViewContext, button: miru.Button):
         await ctx.defer()
-
-        async with self._lock:
-            self.page += 1
-            await self.update(ctx)
+        self.page += 1
+        await self.update(ctx)
 
     @miru.button(label="⏹ Stop", style=hikari.ButtonStyle.DANGER)
     async def stop_btn(self, ctx: miru.ViewContext, button: miru.Button):
@@ -635,10 +631,14 @@ def generate_debate_image(template: str, user_1: NonAsyncHikariMember, user_2: N
 
     return background.image_bytes.getvalue()
 
+def tier_icon_editor(tier: Tier, size: tuple[int, int]) -> Editor:
+    source = tier.icon if tier.icon else "images/tier.png"
+    return Editor(source).resize(size)
+
 def generate_tier_rankup_image(user: NonAsyncHikariMember, from_tier: Tier, to_tier: Tier) -> bytes:
     background = Editor("images/tier_rankup.png")
-    from_tier_image = Editor(from_tier.icon).resize((256, 256))
-    to_tier_image = Editor(to_tier.icon).resize((256, 256))
+    from_tier_image = tier_icon_editor(from_tier, (256, 256))
+    to_tier_image = tier_icon_editor(to_tier, (256, 256))
     user_avatar = Editor(user.avatar_bytes).circle_image().resize((64, 64))
     background.paste(from_tier_image, (248 - 128, 512 + 15 - 128))
     background.paste(to_tier_image, (777 - 128, 512 + 15 - 128))
@@ -1128,17 +1128,15 @@ class MatchesHistoryView(DisableView):
     @miru.button(label="◀ Prev", style=hikari.ButtonStyle.SECONDARY)
     async def prev(self, ctx: miru.ViewContext, button: miru.Button):
         await ctx.defer()
-        async with self._lock:
-            if self.page > 0:
-                self.page -= 1
-            await self.update(ctx)
+        if self.page > 0:
+            self.page -= 1
+        await self.update(ctx)
 
     @miru.button(label="Next ▶", style=hikari.ButtonStyle.SECONDARY)
     async def next(self, ctx: miru.ViewContext, button: miru.Button):
         await ctx.defer()
-        async with self._lock:
-            self.page += 1
-            await self.update(ctx)
+        self.page += 1
+        await self.update(ctx)
 
     @miru.button(label="⏹ Stop", style=hikari.ButtonStyle.DANGER)
     async def stop_btn(self, ctx: miru.ViewContext, button: miru.Button):

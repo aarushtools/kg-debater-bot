@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
     await rest_app.start()
     if not Tortoise.is_inited():
         await Tortoise.init(config=secret.TORTOISE_ORM, _enable_global_fallback=True)
-        await Tortoise.generate_schemas(safe=True)
 
     app.state.discord_rest_app = rest_app
     try:

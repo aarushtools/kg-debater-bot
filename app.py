@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from io import BytesIO
@@ -33,6 +34,11 @@ discord = DiscordOAuthClient(
     scopes=("identify",),
 )
 
+logging.basicConfig(
+    filename="app_errors.log",
+    level=logging.ERROR,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -56,7 +62,7 @@ app.add_middleware(
     session_cookie="kg_admin_session",
     max_age=SESSION_MAX_AGE,
     same_site="lax",
-    https_only=False,
+    https_only=True,
 )
 
 

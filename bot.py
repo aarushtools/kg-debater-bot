@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,6 +22,12 @@ bot = hikari.GatewayBot(token=secret.TOKEN, intents=hikari.Intents.ALL)
 lb_client = lightbulb.client_from_app(bot)
 miru_client = miru.Client(bot)
 cache = Cache(Cache.MEMORY)
+
+logging.basicConfig(
+    filename="app_errors.log",
+    level=logging.ERROR,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 @dataclass
 class NonAsyncHikariMember:

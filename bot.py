@@ -411,7 +411,7 @@ class CancelDebate(lightbulb.SlashCommand, name="cancel", description="Request t
             return
         elif view.answer is False:
             await ctx.edit_response(response_id=response_id,
-                                    content=f"{request_user.mention} denied this cancal debate request.")
+                                    content=f"{request_user.mention} denied this cancel debate request.")
             return
         elif view.answer == "cancel":
             await ctx.edit_response(response_id=response_id,
@@ -497,7 +497,7 @@ class FinishDebate(lightbulb.SlashCommand, name="finish", description="Finish a 
             model_winner = await User.get(discord_id=model_winner.discord_id).prefetch_related("tier")
             model_loser = await User.get(discord_id=model_loser.discord_id).prefetch_related("tier")
 
-        asker_won = view.winner_id == asker_user.id
+        asker_won = int(view.winner_id) == asker_user.id
 
         new_tier = model_winner.tier
         winner_rank_up = False

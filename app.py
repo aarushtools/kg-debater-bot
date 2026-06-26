@@ -18,7 +18,7 @@ from tortoise import Tortoise
 from tortoise.exceptions import DoesNotExist, IntegrityError, ValidationError
 from tortoise.transactions import in_transaction
 
-from helpers import get_match_score_nickname
+from helpers import get_match_score_nickname, sync_tier_roles
 from models import AdminAction, IncompleteMatch, Match, Tier, User
 import secret
 
@@ -219,6 +219,12 @@ async def refresh_member_nickname(request: Request, user: User) -> str | None:
             return "Bot does not have permission to update one or more nicknames."
 
     return None
+
+
+async def refresh_member_tier_roles(request: Request, user: User) -> str | None:
+    rest = request.app.state.discord_rest_app.acquire(secret.TOKEN, "Bot")
+    async with rest:
+        return await sync_tier_roles(user, rest=rest, guild_id=secret.GUILD_ID)
 
 
 async def user_has_admin_role(request: Request, user_id: str) -> bool:
@@ -498,6 +504,13 @@ async def user_save(request: Request, user: dict[str, Any] = Depends(require_adm
         path = f"/admin/users/{original_id}/edit" if original_id else "/admin/users/new"
         return admin_redirect(path, error=str(exc))
 
+    bot_user = await User.get(discord_id=discord_id)
+    bot_user.tier = await bot_user.calculate_dynamic_tier_object()
+    await bot_user.save()
+    role_error = await refresh_member_tier_roles(request, bot_user)
+    if role_error:
+        return admin_redirect("/admin/users", error=role_error)
+
     return admin_redirect("/admin/users", notice="saved")
 
 
@@ -702,6 +715,9 @@ async def match_annul(
         error = await refresh_member_nickname(request, bot_user)
         if error:
             return admin_redirect("/admin/matches", error=error)
+        role_error = await refresh_member_tier_roles(request, bot_user)
+        if role_error:
+            return admin_redirect("/admin/matches", error=role_error)
 
     await log_admin_action(user, "Match annulled", f"Annulled match #{match.id}: '{match.topic}'.")
     return admin_redirect("/admin/matches", notice="annulled")

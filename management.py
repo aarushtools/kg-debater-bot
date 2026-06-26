@@ -6,7 +6,7 @@ import sys
 
 from tortoise import Tortoise
 
-from helpers import get_match_score_nickname
+from helpers import get_match_score_nickname, sync_tier_roles
 
 args = sys.argv[1:]
 import secret
@@ -38,6 +38,10 @@ async def on_member_chunk(event: hikari.MemberChunkEvent) -> None:
                 await member.edit(nickname=match_nick)
         except hikari.ForbiddenError:
             print(f"Couldn't edit {member.display_name}'s nickname")
+
+        role_error = await sync_tier_roles(model_user, member=member)
+        if role_error:
+            print(f"Couldn't sync tier roles for {member.display_name}: {role_error}")
 
         if created: created_count += 1
         else: already_existed += 1

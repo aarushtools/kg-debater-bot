@@ -1,7 +1,55 @@
+import logging
+
 import hikari
 
 import models
 from models import Tier
+
+logger = logging.getLogger(__name__)
+
+_STALE_DISCORD_RESOURCE_CODES = frozenset({
+    10003,  # Unknown Channel
+    10008,  # Unknown Message
+    10015,  # Unknown Webhook
+    10062,  # Unknown Interaction
+    40060,  # Interaction has already been acknowledged
+    50027,  # Invalid Webhook Token
+})
+
+
+def is_stale_discord_resource_error(exc: BaseException) -> bool:
+    if isinstance(exc, hikari.NotFoundError):
+        return True
+
+    if isinstance(exc, hikari.HTTPError) and exc.code in _STALE_DISCORD_RESOURCE_CODES:
+        return True
+
+    return False
+
+
+async def safe_defer_response(ctx, **kwargs) -> bool:
+    try:
+        await ctx.defer(**kwargs)
+        return True
+    except Exception as exc:
+        if is_stale_discord_resource_error(exc):
+            logger.warning("Skipping defer; interaction is no longer available: %s", exc)
+            return False
+        raise
+
+
+async def safe_edit_response(ctx, *, response_id=None, **kwargs) -> bool:
+    try:
+        if response_id is not None:
+            await ctx.edit_response(response_id=response_id, **kwargs)
+        else:
+            await ctx.edit_response(**kwargs)
+        return True
+    except Exception as exc:
+        if is_stale_discord_resource_error(exc):
+            logger.warning("Skipping edit_response; interaction/message is no longer available: %s", exc)
+            return False
+        raise
 
 
 async def get_tier_role_ids() -> set[int]:

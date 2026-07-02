@@ -6,7 +6,12 @@
         <h2 class="text-2xl font-semibold tracking-tight">Users</h2>
         <p class="mt-2 text-sm text-zinc-400">Sorted by Elo, highest first.</p>
     </div>
-    <a href="/admin/users/new" class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400">New user</a>
+    <div class="flex gap-2">
+        <form method="post" action="/admin/users/resync-active-status">
+            <button type="submit" class="rounded-md bg-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-600">Resync active status</button>
+        </form>
+        <a href="/admin/users/new" class="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400">New user</a>
+    </div>
 </div>
 
 <section class="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">

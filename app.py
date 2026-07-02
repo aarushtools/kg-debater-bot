@@ -127,7 +127,7 @@ async def tier_choices() -> list[Tier]:
 
 
 async def user_choices() -> list[User]:
-    return await User.all().order_by("discord_name")
+    return await User.filter(is_active=True).order_by("discord_name")
 
 
 async def incomplete_match_choices() -> list[IncompleteMatch]:
@@ -328,7 +328,7 @@ async def admin_dashboard(
 ):
     counts = {
         "tiers": await Tier.all().count(),
-        "users": await User.all().count(),
+        "users": await User.filter(is_active=True).count(),
         "incomplete_matches": await IncompleteMatch.all().count(),
         "matches": await Match.all().count(),
         "admin_actions": await AdminAction.all().count(),
@@ -448,7 +448,7 @@ async def tier_icon(tier_id: int, user: dict[str, Any] = Depends(require_admin_u
 
 @app.get("/admin/users", response_class=HTMLResponse)
 async def users_index(request: Request, page: int = 1, user: dict[str, Any] = Depends(require_admin_user)):
-    users, pagination = await paginate(User.all().prefetch_related("tier").order_by("-elo", "discord_name"), page)
+    users, pagination = await paginate(User.filter(is_active=True).prefetch_related("tier").order_by("-elo", "discord_name"), page)
     return templates.TemplateResponse(
         request,
         "users.html",
@@ -541,6 +541,30 @@ async def user_refresh_nickname(
 
     await log_admin_action(user, "Nickname refreshed", f"Refreshed nickname for '{bot_user.discord_name}' ({discord_id}).")
     return admin_redirect("/admin/users", notice="nickname_updated")
+
+
+@app.post("/admin/users/resync-active-status")
+async def user_resync_active_status(request: Request, user: dict[str, Any] = Depends(require_admin_user)):
+    bot_users = await User.all()
+    updated = 0
+    
+    rest = request.app.state.discord_rest_app.acquire(secret.TOKEN, "Bot")
+    async with rest:
+        for bot_user in bot_users:
+            try:
+                await rest.fetch_member(secret.GUILD_ID, bot_user.discord_id)
+                if not bot_user.is_active:
+                    bot_user.is_active = True
+                    await bot_user.save()
+                    updated += 1
+            except hikari.NotFoundError:
+                if bot_user.is_active:
+                    bot_user.is_active = False
+                    await bot_user.save()
+                    updated += 1
+                
+    await log_admin_action(user, "Users active status resynced", f"Resynced active statuses. {updated} users updated.")
+    return admin_redirect("/admin/users", notice="resynced")
 
 
 @app.get("/admin/incomplete-matches", response_class=HTMLResponse)

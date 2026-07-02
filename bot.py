@@ -15,7 +15,13 @@ from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 import secret
-from helpers import get_match_score_nickname, sync_tier_roles
+from helpers import (
+    get_match_score_nickname,
+    is_stale_discord_resource_error,
+    safe_defer_response,
+    safe_edit_response,
+    sync_tier_roles,
+)
 from models import User, Tier, Match, IncompleteMatch, start_db
 
 bot = hikari.GatewayBot(token=secret.TOKEN, intents=hikari.Intents.ALL)
@@ -53,10 +59,17 @@ class DisableView(miru.View):
         if self.message:
             try:
                 await self.message.edit(components=self)
-            except hikari.NotFoundError:
-                pass
+            except Exception as exc:
+                if not is_stale_discord_resource_error(exc):
+                    logging.error("Failed to disable view UI: %s", exc)
 
         self.stop()
+
+    async def _safe_defer(self, ctx: miru.ViewContext) -> bool:
+        return await safe_defer_response(ctx)
+
+    async def _safe_edit_response(self, ctx, response_id=None, **kwargs) -> bool:
+        return await safe_edit_response(ctx, response_id=response_id, **kwargs)
 
 async def build_nonasync_member(member: hikari.Member):
     model_user = await User.get(discord_id=member.id)
@@ -77,12 +90,22 @@ async def on_member_join(event: hikari.MemberCreateEvent) -> None:
         "discord_name": member.username,
         "tier": await Tier.objects.get_default_tier()
     })
+    
+    if not model_user.is_active:
+        model_user.is_active = True
+        await model_user.save()
 
     await member.edit(nickname=await get_match_score_nickname(current_name, model_user))
     role_error = await sync_tier_roles(model_user, member=member)
     if role_error:
         logging.error("Tier role sync failed for %s on join: %s", member.id, role_error)
 
+@bot.listen(hikari.MemberDeleteEvent)
+async def on_member_leave(event: hikari.MemberDeleteEvent) -> None:
+    model_user = await User.get_or_none(discord_id=event.user_id)
+    if model_user:
+        model_user.is_active = False
+        await model_user.save()
 
 @lb_client.register
 class GetUILink(lightbulb.SlashCommand, name="ui", description="Get link to bot UI"):
@@ -100,7 +123,7 @@ class Stats(lightbulb.SlashCommand, name="stats", description="View debate stats
 
     @lightbulb.invoke
     async def invoke(self, ctx: lightbulb.Context, profile_user: hikari.User | None = None) -> None:
-        await ctx.defer(ephemeral=True)
+        await safe_defer_response(ctx, ephemeral=True)
 
         single_user = self.user or profile_user
 
@@ -173,8 +196,8 @@ class StatsLeaderboardView(DisableView):
         )
 
     async def fetch_page(self):
-        total = await User.all().count()
-        users = await User.all().order_by("-elo")[
+        total = await User.filter(is_active=True).count()
+        users = await User.filter(is_active=True).order_by("-elo")[
                       self.page * self.page_size: self.page * self.page_size + self.page_size
                       ]
         return users, total
@@ -237,9 +260,9 @@ class StatsLeaderboardView(DisableView):
             )
 
             if response_id is None:
-                await ctx.edit_response(**kwargs)
+                await self._safe_edit_response(ctx, **kwargs)
             else:
-                await ctx.edit_response(response_id=response_id, **kwargs)
+                await self._safe_edit_response(ctx, response_id=response_id, **kwargs)
 
             await asyncio.sleep(0.2)
 
@@ -252,26 +275,32 @@ class StatsLeaderboardView(DisableView):
             )
 
             if response_id is None:
-                await ctx.edit_response(**kwargs)
+                await self._safe_edit_response(ctx, **kwargs)
             else:
-                await ctx.edit_response(response_id=response_id, **kwargs)
+                await self._safe_edit_response(ctx, response_id=response_id, **kwargs)
 
     @miru.button(label="◀ Prev", style=hikari.ButtonStyle.SECONDARY)
     async def prev(self, ctx: miru.ViewContext, button: miru.Button):
-        await ctx.defer()
+        if not await self._safe_defer(ctx):
+            await self.disable_and_stop_ui()
+            return
         if self.page > 0:
             self.page -= 1
         await self.update(ctx)
 
     @miru.button(label="Next ▶", style=hikari.ButtonStyle.SECONDARY)
     async def next(self, ctx: miru.ViewContext, button: miru.Button):
-        await ctx.defer()
+        if not await self._safe_defer(ctx):
+            await self.disable_and_stop_ui()
+            return
         self.page += 1
         await self.update(ctx)
 
     @miru.button(label="⏹ Stop", style=hikari.ButtonStyle.DANGER)
     async def stop_btn(self, ctx: miru.ViewContext, button: miru.Button):
-        await ctx.defer()
+        if not await self._safe_defer(ctx):
+            await self.disable_and_stop_ui()
+            return
         await self.disable_and_stop_ui()
 
     async def on_timeout(self):
@@ -351,25 +380,25 @@ class StartDebate(lightbulb.SlashCommand, name="start", description="Start a deb
             await view.wait()
 
             if view.answer is None:
-                await ctx.edit_response(response_id=response_id,
+                await safe_edit_response(ctx,response_id=response_id,
                                         content=f"{request_user.mention} did not respond for a {user_str} request within 120 seconds.", components=view)
                 incomplete_match_obj.ongoing = False
                 await incomplete_match_obj.save()
                 return
             elif view.answer is False:
-                await ctx.edit_response(response_id=response_id,
+                await safe_edit_response(ctx,response_id=response_id,
                                         content=f"{request_user.mention} denied this {user_str} request.")
                 incomplete_match_obj.ongoing = False
                 await incomplete_match_obj.save()
                 return
             elif view.answer == "cancel":
-                await ctx.edit_response(response_id=response_id,
+                await safe_edit_response(ctx,response_id=response_id,
                                         content=f"{ctx.member.mention} canceled this {user_str} request.")
                 incomplete_match_obj.ongoing = False
                 await incomplete_match_obj.save()
                 return
             elif view.answer is True:
-                await ctx.edit_response(response_id=response_id,
+                await safe_edit_response(ctx,response_id=response_id,
                                         content=f"{request_user.mention} accepted this {user_str} request.")
 
         # Here, opposer and judge has accepted
@@ -421,20 +450,20 @@ class CancelDebate(lightbulb.SlashCommand, name="cancel", description="Request t
         await view.wait()
 
         if view.answer is None:
-            await ctx.edit_response(response_id=response_id,
+            await safe_edit_response(ctx,response_id=response_id,
                                     content=f"{request_user.mention} did not respond for a cancel debate request within 120 seconds.", components=view)  # We have to do this or else the buttons don't disable since on timeout no one clicked any button
             return
         elif view.answer is False:
-            await ctx.edit_response(response_id=response_id,
+            await safe_edit_response(ctx,response_id=response_id,
                                     content=f"{request_user.mention} denied this cancel debate request.")
             return
         elif view.answer == "cancel":
-            await ctx.edit_response(response_id=response_id,
+            await safe_edit_response(ctx,response_id=response_id,
                                     content=f"{ctx.member.mention} canceled this cancel debate request.")
             return
         elif view.answer is True:
             embed.edit_field(0, "Progress", "2/2")
-            await ctx.edit_response(response_id=response_id,
+            await safe_edit_response(ctx,response_id=response_id,
                                     content=f"{request_user.mention} accepted this cancel debate request.", embed=embed)
             async with in_transaction():
                 incomplete_match_obj.ongoing = False
@@ -487,12 +516,12 @@ class FinishDebate(lightbulb.SlashCommand, name="finish", description="Finish a 
         await view.wait()
 
         if not view.stance_description:
-            await ctx.edit_response(response_id=response_id,
+            await safe_edit_response(ctx,response_id=response_id,
                                     content=f"{ctx.member.mention} did not respond for a debate finish request within 120 seconds.",
                                     components=view)
             return
         else:
-            await ctx.edit_response(response_id=response_id,
+            await safe_edit_response(ctx,response_id=response_id,
                                     components=view)
 
 
@@ -880,7 +909,7 @@ class JudgeDebateInputModal(miru.Modal):
     additional_notes = miru.TextInput(label="Additional notes", style=hikari.TextInputStyle.PARAGRAPH)
 
     async def callback(self, ctx: miru.ModalContext) -> None:
-        await ctx.defer()
+        await safe_defer_response(ctx)
 
 class JudgeDebateInputModalView(DisableView):
     def __init__(self, judge: hikari.Member, user_1: hikari.Member, user_2: hikari.Member, *args, **kwargs) -> None:
@@ -934,7 +963,7 @@ class JudgeDebateInputModalView(DisableView):
         self.stop()
 
     async def on_select(self, ctx: miru.ViewContext, select: miru.TextSelect) -> None:
-        await ctx.defer()
+        await safe_defer_response(ctx)
 
 class LimitedAcceptDenyView(DisableView):
     def __init__(self, asker: hikari.User, user_requested: hikari.User, user_request_str: str, *args, **kwargs):
@@ -1004,7 +1033,7 @@ class Matches(lightbulb.SlashCommand, name="matches", description="View match hi
 
     @lightbulb.invoke
     async def invoke(self, ctx: lightbulb.Context, target_user: hikari.User | None = None) -> None:
-        await ctx.defer(ephemeral=True)
+        await safe_defer_response(ctx, ephemeral=True)
 
         single_user = self.user or target_user
         model_user = None
@@ -1106,9 +1135,9 @@ class MatchesHistoryView(DisableView):
             )
 
             if response_id is None:
-                await ctx.edit_response(**kwargs)
+                await self._safe_edit_response(ctx, **kwargs)
             else:
-                await ctx.edit_response(response_id=response_id, **kwargs)
+                await self._safe_edit_response(ctx, response_id=response_id, **kwargs)
 
             await asyncio.sleep(0.2)
 
@@ -1121,26 +1150,32 @@ class MatchesHistoryView(DisableView):
             )
 
             if response_id is None:
-                await ctx.edit_response(**kwargs)
+                await self._safe_edit_response(ctx, **kwargs)
             else:
-                await ctx.edit_response(response_id=response_id, **kwargs)
+                await self._safe_edit_response(ctx, response_id=response_id, **kwargs)
 
     @miru.button(label="◀ Prev", style=hikari.ButtonStyle.SECONDARY)
     async def prev(self, ctx: miru.ViewContext, button: miru.Button):
-        await ctx.defer()
+        if not await self._safe_defer(ctx):
+            await self.disable_and_stop_ui()
+            return
         if self.page > 0:
             self.page -= 1
         await self.update(ctx)
 
     @miru.button(label="Next ▶", style=hikari.ButtonStyle.SECONDARY)
     async def next(self, ctx: miru.ViewContext, button: miru.Button):
-        await ctx.defer()
+        if not await self._safe_defer(ctx):
+            await self.disable_and_stop_ui()
+            return
         self.page += 1
         await self.update(ctx)
 
     @miru.button(label="⏹ Stop", style=hikari.ButtonStyle.DANGER)
     async def stop_btn(self, ctx: miru.ViewContext, button: miru.Button):
-        await ctx.defer()
+        if not await self._safe_defer(ctx):
+            await self.disable_and_stop_ui()
+            return
         await self.disable_and_stop_ui()
 
     async def on_timeout(self):
@@ -1151,7 +1186,7 @@ class MatchesHistoryView(DisableView):
 class GetUserMatches(lightbulb.UserCommand, name="View match history"):
     @lightbulb.invoke
     async def invoke(self, ctx: lightbulb.Context) -> None:
-        await ctx.defer(ephemeral=True)
+        await safe_defer_response(ctx, ephemeral=True)
         try:
             model_user = await User.get(discord_id=self.target.id)
         except DoesNotExist:
@@ -1172,4 +1207,32 @@ class GetUserMatches(lightbulb.UserCommand, name="View match history"):
 bot.subscribe(hikari.StartingEvent, start_db)
 bot.subscribe(hikari.StartingEvent, lb_client.start)
 lb_client.register(debate)
+
+
+@lb_client.error_handler(priority=100)
+async def handle_stale_interaction_command_error(
+    exc: lightbulb.exceptions.ExecutionPipelineFailedException,
+) -> bool:
+    if any(is_stale_discord_resource_error(cause) for cause in exc.causes):
+        logging.warning(
+            "Command %r ended because the interaction or message is no longer available",
+            exc.context.command_data.qualified_name,
+        )
+        return True
+    return False
+
+
+@bot.listen(hikari.ExceptionEvent)
+async def on_unhandled_exception(event: hikari.ExceptionEvent) -> None:
+    if is_stale_discord_resource_error(event.exception):
+        logging.warning("Ignored stale Discord resource error: %s", event.exception)
+        return
+
+    logging.exception(
+        "Unhandled exception in event %r",
+        event.failed_event.__class__.__name__,
+        exc_info=event.exception,
+    )
+
+
 bot.run()

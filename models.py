@@ -52,6 +52,7 @@ class User(Model):
     discord_name = fields.CharField(max_length=255)  # TODO: Refreshes every 24 hours
     elo = fields.IntField(default=0)
     tier = fields.ForeignKeyField("botdb.Tier", on_delete=fields.CASCADE, related_name="users")
+    is_active = fields.BooleanField(default=True)
 
     async def calculate_dynamic_tier_object(self) -> Tier:
         """Returns the Tier object for this user through a fresh query instead of the foreign key
